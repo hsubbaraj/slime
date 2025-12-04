@@ -70,6 +70,7 @@ def run_sft_job():
     env["DATA_PATH"] = os.path.join(DATA_REMOTE_PATH, "airline_sft_formatted.jsonl")
     env["OUTPUT_PATH"] = os.path.join(CHECKPOINT_REMOTE_PATH, "Qwen3-4B-sft-airline")
     env["MEGATRON_PATH"] = MEGATRON_REMOTE_PATH
+    env["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
     
     # Run the SFT script
     print("Launching SFT Training...")
@@ -84,7 +85,7 @@ def run_sft_job():
     print("Training completed successfully.")
 
 @app.function(
-    gpu="H100", # Cheaper than H100 for testing
+    gpu=modal.gpu.H100(count=2), # Request 2 H100 GPUs for the test job
     timeout=60*10, # 10 minutes timeout
     volumes={
         DATA_REMOTE_PATH: data_volume,
@@ -110,10 +111,14 @@ def run_test_job():
     env["DATA_PATH"] = os.path.join(DATA_REMOTE_PATH, "airline_sft_formatted.jsonl")
     env["OUTPUT_PATH"] = os.path.join(CHECKPOINT_REMOTE_PATH, "Qwen3-4B-sft-airline-test")
     env["MEGATRON_PATH"] = MEGATRON_REMOTE_PATH
+    env["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
     
     # Test specific overrides
     env["NUM_EPOCH"] = "1"
-    env["BATCH_SIZE"] = "1"
+    env["BATCH_SIZE"] = "2"
+    # Configure for 2 GPUs
+    env["ACTOR_NUM_GPUS_PER_NODE"] = "2"
+    env["GLOBAL_BATCH_SIZE"] = "2"
     
     # Run the SFT script
     print("Launching SFT Test Training...")

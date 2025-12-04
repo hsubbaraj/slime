@@ -62,7 +62,7 @@ PERF_ARGS=(
    --recompute-num-layers 1
 
    --use-dynamic-batch-size
-   --max-tokens-per-gpu 9216
+   --max-tokens-per-gpu 8192
 )
 
 # Define Optimizer Arguments
@@ -94,10 +94,7 @@ MISC_ARGS=(
 
 # Start Ray
 export MASTER_ADDR=${MASTER_ADDR:-"127.0.0.1"}
-# Check if ray is already running
-if ! ray status > /dev/null 2>&1; then
-    ray start --head --node-ip-address ${MASTER_ADDR} --num-gpus $(nvidia-smi -L | wc -l) --disable-usage-stats --dashboard-host=0.0.0.0 --dashboard-port=8265
-fi
+ray start --head --node-ip-address ${MASTER_ADDR} --num-gpus $(nvidia-smi -L | wc -l) --disable-usage-stats --dashboard-host=0.0.0.0 --dashboard-port=8265
 
 # Runtime environment
 RUNTIME_ENV_JSON="{
@@ -105,21 +102,15 @@ RUNTIME_ENV_JSON="{
     \"PYTHONPATH\": \"$SLIME_HOME:$MEGATRON_PATH\",
     \"CUDA_DEVICE_MAX_CONNECTIONS\": \"1\",
     \"NCCL_ALGO\": \"Ring\",
-    \"NVTE_ALLOW_NONDETERMINISTIC_ALGO\": \"0\"
+    \"NVTE_ALLOW_NONDETERMINISTIC_ALGO\": \"0\",
+    \"PYTORCH_CUDA_ALLOC_CONF\": \"expandable_segments:True\"
   }
 }"
 
-# Run directly with unbuffered output for better debugging
-python3 -u "$SLIME_HOME/train_async.py" \
-   --actor-num-nodes 1 \
-   --actor-num-gpus-per-node $(nvidia-smi -L | wc -l) \
-   ${MODEL_ARGS[@]} \
-   ${CKPT_ARGS[@]} \
-   ${SFT_ARGS[@]} \
-   ${OPTIMIZER_ARGS[@]} \
-   ${WANDB_ARGS[@]} \
-   ${PERF_ARGS[@]} \
-   ${MISC_ARGS[@]}
+# Run via ray job submit to propagate env vars
+ray job submit --address="http://127.0.0.1:8265" \
+   --runtime-env-json="${RUNTIME_ENV_JSON}" \
+   -- python3 "$SLIME_HOME/train_async.py" \
    --actor-num-nodes 1 \
    --actor-num-gpus-per-node $(nvidia-smi -L | wc -l) \
    ${MODEL_ARGS[@]} \
