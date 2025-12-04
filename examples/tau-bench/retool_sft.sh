@@ -3,9 +3,9 @@ set -ex
 
 # Default paths - can be overridden by environment variables
 SLIME_HOME=${SLIME_HOME:-"/root/slime"}
-MODEL_PATH=${MODEL_PATH:-"/root/models/Qwen3-8B-Instruct"}
+MODEL_PATH=${MODEL_PATH:-"/root/models/Qwen3-4B-Instruct-2507"}
 DATA_PATH=${DATA_PATH:-"/root/data/airline_sft_formatted.jsonl"}
-OUTPUT_PATH=${OUTPUT_PATH:-"/root/checkpoints/Qwen3-8B-sft-airline"}
+OUTPUT_PATH=${OUTPUT_PATH:-"/root/checkpoints/Qwen3-4B-sft-airline"}
 MEGATRON_PATH=${MEGATRON_PATH:-"/root/Megatron-LM"}
 
 # Ensure output directory exists
@@ -53,7 +53,7 @@ PERF_ARGS=(
    --tensor-model-parallel-size 1
    --sequence-parallel
    --pipeline-model-parallel-size 1
-   --context-parallel-size 1
+   --context-parallel-size 2  # CHANGED: Enable Context Parallel for long sequences
    --expert-model-parallel-size 1
    --expert-tensor-parallel-size 1
 
@@ -62,7 +62,7 @@ PERF_ARGS=(
    --recompute-num-layers 1
 
    --use-dynamic-batch-size
-   --max-tokens-per-gpu 8192
+   --max-tokens-per-gpu 12288  # CHANGED: 12K per GPU = 24K total with CP=2 (covers ~95% of data, safer for memory)
 )
 
 # Define Optimizer Arguments
