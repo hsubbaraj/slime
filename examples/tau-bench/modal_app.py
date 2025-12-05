@@ -44,7 +44,7 @@ app = App("slime-tau-sft", image=image)
 
 
 @app.function(
-    gpu="H100",  # Or A100-80GB, adjust as needed
+    gpu="H100:4",  # Updated to 4 GPUs for CP=2, DP=2 training
     timeout=86400,  # 24 hours
     volumes={
         DATA_REMOTE_PATH: data_volume,
@@ -52,7 +52,7 @@ app = App("slime-tau-sft", image=image)
         CHECKPOINT_REMOTE_PATH: checkpoint_volume,
     },
 )
-def run_sft_job():
+def run_sft_job(stream_output: bool = True):
     # Install slime and tau-bench in editable mode within the container
     print("Installing slime in editable mode...")
     subprocess.run(["pip", "install", "-e", SLIME_REMOTE_PATH], check=True)
@@ -74,10 +74,15 @@ def run_sft_job():
 
     # Run the SFT script
     print("Launching SFT Training...")
-    result = subprocess.run([sft_script_path], env=env, text=True, capture_output=True)
-
-    print("STDOUT:", result.stdout)
-    print("STDERR:", result.stderr)
+    
+    if stream_output:
+        # Stream output directly to console (Modal logs)
+        result = subprocess.run([sft_script_path], env=env, text=True)
+    else:
+        # Capture output and print at the end
+        result = subprocess.run([sft_script_path], env=env, text=True, capture_output=True)
+        print("STDOUT:", result.stdout)
+        print("STDERR:", result.stderr)
 
     if result.returncode != 0:
         raise Exception(f"Training failed with exit code {result.returncode}")

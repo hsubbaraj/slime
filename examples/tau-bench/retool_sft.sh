@@ -112,7 +112,9 @@ ray job submit --address="http://127.0.0.1:8265" \
    --runtime-env-json="${RUNTIME_ENV_JSON}" \
    -- python3 "$SLIME_HOME/train_async.py" \
    --actor-num-nodes 1 \
-   --actor-num-gpus-per-node $(nvidia-smi -L | wc -l) \
+   --actor-num-gpus-per-node 4 \
+   --rollout-batch-size 1 \
+   --global-batch-size 4 \
    ${MODEL_ARGS[@]} \
    ${CKPT_ARGS[@]} \
    ${SFT_ARGS[@]} \

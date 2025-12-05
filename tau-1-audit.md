@@ -66,41 +66,39 @@ This report details findings regarding the suboptimal performance of SGLang-trai
 *   **Configuration:**
     *   Enabled Context Parallel (CP) with `--context-parallel-size 2` to split sequences across GPUs using Ring Attention
     *   Adjusted `--max-tokens-per-gpu 12288` (12K per GPU = 24K total capacity)
-    *   Set `--global-batch-size 1` (required when CP size equals total GPU count)
     *   Filtered only conversations exceeding 24,576 tokens (~5% of dataset)
 
 *   **Trade-offs:**
     *   ✅ Retains 95% of training data (268 of 287 conversations)
     *   ✅ Handles realistic conversation lengths up to P95
     *   ⚠️ Training is ~15-25% slower due to Ring Attention communication overhead
-    *   ⚠️ Batch size limited to 1 on 2-GPU test configuration (would improve with more GPUs)
 
 *   **Hardware Requirements:**
     *   **Minimum for testing:** 2x H100 GPUs with CP=2, batch size 1
     *   **Recommended for production:** 8+ GPUs to enable both CP and DP (e.g., CP=2 × DP=4)
 
+### 2.6 Solution Optimization: Batch Size Tuning
+*   **Cost vs. Throughput Analysis:** An optimization script (`optimize_cost.py`) was developed to evaluate the trade-offs between GPU count, Context Parallel size, and dataset coverage.
+*   **Selected Configuration:** **4 GPUs with CP=2 and DP=2**.
+    *   **Why:** This setup retains 95.1% of the data (up to 24k tokens) and offers the "Best Value" in terms of estimated training cost ($0.78 per run vs $0.92 for 100% coverage on 8 GPUs).
+*   **Batch Size Strategy:**
+    *   **Micro Batch Size:** Set to `1` (per DP group) to strictly respect memory constraints with 24k token sequences.
+    *   **Global Batch Size:** Set to `4`. With DP=2, this implies `Gradient Accumulation Steps = 2`.
+    *   **Impact:** This configuration improves throughput by reducing optimizer step frequency while keeping peak memory usage within safe limits.
+
 ## 3. Recommendations & Next Steps
 
-### 3.1 Immediate Actions (Phase 2 - SFT)
-*   **Testing Workflow Established:** A staged testing approach has been implemented to validate the Context Parallel configuration:
-    1. Filter conversations to 24K token limit (`filter_long_conversations`)
-    2. Create 2-conversation test dataset (`create_tiny_test_data`)
-    3. Run quick validation test (`run_quick_test` - 2-5 minutes)
-    4. Run full test (1 epoch on 268 conversations - 1-2 hours)
-    5. Run production SFT (3 epochs)
-
-*   **Next Step:** Execute the quick test to validate the CP=2 configuration on Modal before committing to full training runs.
+### 3.1 Immediate Actions (Phase 2 - SFT Launch)
+*   **Training Configured:** The SFT job `run_sft_job` has been updated to use:
+    *   **Hardware:** 4x H100 GPUs
+    *   **Parallelism:** CP=2, DP=2
+    *   **Batching:** Micro=1, Global=4
+    *   **Epochs:** 3
+*   **Execution:** Launch `modal run slime/examples/tau-bench/modal_app.py::run_sft_job` to begin the 3-epoch SFT run. Real-time logging is enabled by default.
 
 ### 3.2 Short-Term (Phase 2 Optimization)
-*   **Scale Hardware for Production:** Once testing validates the approach, scale to 8 GPUs to enable:
-    *   Context Parallel size 2 (for sequence splitting)
-    *   Data Parallel size 4 (for throughput)
-    *   Batch size 4 (significantly faster training)
-
-*   **Monitor Training Metrics:**
-    *   Track loss convergence with extremely long sequences
-    *   Verify model learns appropriate tool-usage patterns despite sequence length
-    *   Watch for gradient issues or instabilities with CP enabled
+*   **Monitor Convergence:** Watch the loss curve closely. With a Global Batch Size of 4 and a small dataset (268 samples), updates will happen frequently (~67 steps per epoch). Ensure the loss decreases stably and doesn't oscillate wildly.
+*   **Verify Evaluation:** After training, run `evaluate_tau.py` to confirm the model has learned the tool-use syntax and can successfully interact with the airline environment.
 
 ### 3.3 Long-Term (Phase 3 - RL)
 *   **Dense Reward Shaping:** Implement dense rewards in `slime/envs/tau/wrappers.py` to address sparse reward challenge
@@ -121,14 +119,18 @@ This report details findings regarding the suboptimal performance of SGLang-trai
 *   `examples/tau-bench/modal_app.py::create_tiny_test_data` - Test dataset creation
 *   `examples/tau-bench/modal_app.py::run_quick_test` - Fast validation test
 *   `examples/tau-bench/modal_app.py::analyze_data_lengths` - Token length analysis
+*   `examples/tau-bench/modal_app.py::run_sft_job` - Main SFT training job
 
 **Configuration Files:**
-*   `examples/tau-bench/retool_sft.sh` - Training script with CP=2 configuration
+*   `examples/tau-bench/retool_sft.sh` - Training script with CP=2, DP=2 configuration
 *   `scripts/models/qwen3-4B-Instruct-2507.sh` - Model hyperparameters
 
 **Key Configuration Values:**
-*   Context Parallel Size: 2
-*   Max Tokens Per GPU: 12,288 (24,576 total)
-*   Batch Size: 1 (on 2 GPUs)
-*   Training Data: 268 conversations (93.4% of original dataset)
-*   Filtered Out: 19 conversations (6.6%, exceeding 24K tokens)
+*   **GPUs:** 4 (H100)
+*   **Context Parallel Size:** 2
+*   **Data Parallel Size:** 2
+*   **Max Tokens Per GPU:** 12,288 (24,576 total)
+*   **Micro Batch Size:** 1
+*   **Global Batch Size:** 4
+*   **Training Data:** 268 conversations (95.1% of original dataset)
+*   **Filtered Out:** 19 conversations (4.9%, exceeding 24K tokens)
