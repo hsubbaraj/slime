@@ -39,8 +39,8 @@ SFT_ARGS=(
    --input-key messages
    --rollout-shuffle
    --num-epoch ${NUM_EPOCH:-3}
-   --rollout-batch-size ${BATCH_SIZE:-128}
-   --global-batch-size ${BATCH_SIZE:-128}
+   # NOTE: rollout-batch-size and global-batch-size are set on command line (lines 116-117)
+   # Do NOT set them here or they will override the command line values
 
    --loss-type sft_loss
    --calculate-per-token-loss
@@ -59,10 +59,10 @@ PERF_ARGS=(
 
    --recompute-granularity full
    --recompute-method uniform
-   --recompute-num-layers 1
+   --recompute-num-layers 4  # CHANGED: Checkpoint every 4 layers to save ~19 GB activation memory (15-20% slower but prevents OOM)
 
    --use-dynamic-batch-size
-   --max-tokens-per-gpu 12288  # CHANGED: 12K per GPU = 24K total with CP=2 (covers ~95% of data, safer for memory)
+   --max-tokens-per-gpu 10240  # 10K per GPU = 20K total with CP=2 (filters 18K+ samples that cause OOM)
 )
 
 # Define Optimizer Arguments
@@ -103,7 +103,9 @@ RUNTIME_ENV_JSON="{
     \"CUDA_DEVICE_MAX_CONNECTIONS\": \"1\",
     \"NCCL_ALGO\": \"Ring\",
     \"NVTE_ALLOW_NONDETERMINISTIC_ALGO\": \"0\",
-    \"PYTORCH_CUDA_ALLOC_CONF\": \"expandable_segments:True\"
+    \"PYTORCH_CUDA_ALLOC_CONF\": \"expandable_segments:True\",
+    \"NCCL_DEBUG\": \"WARN\",
+    \"RAY_DEDUP_LOGS\": \"1\"
   }
 }"
 
@@ -113,8 +115,8 @@ ray job submit --address="http://127.0.0.1:8265" \
    -- python3 "$SLIME_HOME/train_async.py" \
    --actor-num-nodes 1 \
    --actor-num-gpus-per-node 4 \
-   --rollout-batch-size 1 \
-   --global-batch-size 4 \
+   --rollout-batch-size 2 \
+   --global-batch-size 2 \
    ${MODEL_ARGS[@]} \
    ${CKPT_ARGS[@]} \
    ${SFT_ARGS[@]} \

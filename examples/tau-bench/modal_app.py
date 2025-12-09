@@ -45,7 +45,7 @@ app = App("slime-tau-sft", image=image)
 
 @app.function(
     gpu="H100:4",  # Updated to 4 GPUs for CP=2, DP=2 training
-    timeout=86400,  # 24 hours
+    timeout=60 * 60 * 3,  # 2 hours
     volumes={
         DATA_REMOTE_PATH: data_volume,
         MODEL_REMOTE_PATH: model_volume,
@@ -67,14 +67,14 @@ def run_sft_job(stream_output: bool = True):
     env = os.environ.copy()
     env["SLIME_HOME"] = SLIME_REMOTE_PATH
     env["MODEL_PATH"] = os.path.join(MODEL_REMOTE_PATH, "Qwen3-4B-Instruct-2507")  # Qwen3-4B-Instruct-2507 model
-    env["DATA_PATH"] = os.path.join(DATA_REMOTE_PATH, "airline_sft_formatted.jsonl")
+    env["DATA_PATH"] = os.path.join(DATA_REMOTE_PATH, "airline_sft_filtered.jsonl")  # Use filtered dataset (20K tokens)
     env["OUTPUT_PATH"] = os.path.join(CHECKPOINT_REMOTE_PATH, "Qwen3-4B-sft-airline")
     env["MEGATRON_PATH"] = MEGATRON_REMOTE_PATH
     env["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
     # Run the SFT script
     print("Launching SFT Training...")
-    
+
     if stream_output:
         # Stream output directly to console (Modal logs)
         result = subprocess.run([sft_script_path], env=env, text=True)
@@ -278,6 +278,9 @@ def filter_long_conversations(max_tokens=24576):  # 12K per GPU × 2 GPUs with C
     import json
 
     from transformers import AutoTokenizer
+
+    # Convert to int if passed as string from CLI
+    max_tokens = int(max_tokens)
 
     input_path = os.path.join(DATA_REMOTE_PATH, "airline_sft_formatted.jsonl")
     output_path = os.path.join(DATA_REMOTE_PATH, "airline_sft_filtered.jsonl")
